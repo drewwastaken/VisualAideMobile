@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,8 +11,17 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
-import { COLORS, FONTS, FONT_OPTIONS, PRESETS, DEFAULT_SETTINGS } from '../utils/theme';
+import * as Speech from 'expo-speech';
+import { COLORS, FONTS, FONT_OPTIONS, PRESETS, DEFAULT_SETTINGS, SPEECH_RATE_MIN, SPEECH_RATE_MAX } from '../utils/theme';
 import { loadSettings, saveSettings } from '../utils/storage';
+
+// Splits extracted text into sentence-sized chunks so TTS can speak them
+// one at a time and highlight the sentence currently being read.
+function splitIntoSentences(text) {
+  if (!text) return [];
+  const matches = text.match(/[^.!?]+[.!?]+(\s+|$)|[^.!?]+$/g);
+  return matches ? matches.map((s) => s.trim()).filter(Boolean) : [text.trim()];
+}
 
 export default function ReaderScreen({ route, navigation }) {
   const { extractedText } = route.params;
@@ -21,9 +30,57 @@ export default function ReaderScreen({ route, navigation }) {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [fontPickerVisible, setFontPickerVisible] = useState(false);
 
+  const sentences = useMemo(() => splitIntoSentences(extractedText), [extractedText]);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [currentSentence, setCurrentSentence] = useState(-1);
+  const speakingRef = useRef(false); // guards against a stale onDone firing after Stop
+
   useEffect(() => {
     loadSettings().then(setSettings);
   }, []);
+
+  // Stop any in-progress speech if the user navigates away
+  useEffect(() => {
+    return () => {
+      speakingRef.current = false;
+      Speech.stop();
+    };
+  }, []);
+
+  const speakFrom = useCallback((index) => {
+    if (index >= sentences.length) {
+      speakingRef.current = false;
+      setIsSpeaking(false);
+      setCurrentSentence(-1);
+      return;
+    }
+    setCurrentSentence(index);
+    Speech.speak(sentences[index], {
+      rate: settings.speechRate,
+      onDone: () => {
+        if (speakingRef.current) speakFrom(index + 1);
+      },
+      onError: () => {
+        speakingRef.current = false;
+        setIsSpeaking(false);
+        setCurrentSentence(-1);
+      },
+    });
+  }, [sentences, settings.speechRate]);
+
+  function handlePlay() {
+    if (isSpeaking || sentences.length === 0) return;
+    speakingRef.current = true;
+    setIsSpeaking(true);
+    speakFrom(0);
+  }
+
+  function handleStop() {
+    speakingRef.current = false;
+    Speech.stop();
+    setIsSpeaking(false);
+    setCurrentSentence(-1);
+  }
 
   const updateSettings = useCallback((patch) => {
     setSettings((prev) => {
@@ -75,7 +132,16 @@ export default function ReaderScreen({ route, navigation }) {
           contentContainerStyle={styles.textContent}
           showsVerticalScrollIndicator={false}
         >
-          <Text style={[styles.extractedText, textStyle]}>{extractedText}</Text>
+          <Text style={[styles.extractedText, textStyle]}>
+            {sentences.map((sentence, i) => (
+              <Text
+                key={i}
+                style={i === currentSentence ? styles.sentenceHighlight : undefined}
+              >
+                {sentence + ' '}
+              </Text>
+            ))}
+          </Text>
         </ScrollView>
 
         {/* Bottom Controls Panel */}
@@ -96,6 +162,40 @@ export default function ReaderScreen({ route, navigation }) {
               thumbColor={settings.isActive ? '#000' : '#666'}
               ios_backgroundColor={COLORS.border}
             />
+          </View>
+
+          <View style={styles.panelDivider} />
+
+          {/* Text to Speech (independent of the visual-aide toggle above) */}
+          <Text style={styles.sectionLabel}>TEXT TO SPEECH</Text>
+          <View style={styles.ttsRow}>
+            <TouchableOpacity
+              style={[styles.ttsBtn, isSpeaking && styles.ttsBtnActive]}
+              onPress={isSpeaking ? handleStop : handlePlay}
+              activeOpacity={0.7}
+              disabled={sentences.length === 0}
+            >
+              <Text style={[styles.ttsBtnText, isSpeaking && styles.ttsBtnTextActive]}>
+                {isSpeaking ? '■ STOP' : '▶ PLAY'}
+              </Text>
+            </TouchableOpacity>
+            <View style={styles.ttsSliderGroup}>
+              <View style={styles.sliderLabelRow}>
+                <Text style={styles.controlLabel}>Speed</Text>
+                <Text style={styles.sliderValue}>{settings.speechRate.toFixed(1)}x</Text>
+              </View>
+              <Slider
+                style={styles.slider}
+                minimumValue={SPEECH_RATE_MIN}
+                maximumValue={SPEECH_RATE_MAX}
+                step={0.1}
+                value={settings.speechRate}
+                onValueChange={(val) => updateSettings({ speechRate: parseFloat(val.toFixed(1)) })}
+                minimumTrackTintColor={COLORS.accent}
+                maximumTrackTintColor={COLORS.border}
+                thumbTintColor={COLORS.accent}
+              />
+            </View>
           </View>
 
           <View style={styles.panelDivider} />
@@ -246,6 +346,10 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     lineHeight: 26,
   },
+  sentenceHighlight: {
+    backgroundColor: COLORS.accentBg,
+    color: COLORS.accent,
+  },
   panel: {
     backgroundColor: COLORS.surface,
     borderTopWidth: 1,
@@ -287,6 +391,36 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     marginBottom: 14,
+  },
+  ttsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 14,
+  },
+  ttsBtn: {
+    backgroundColor: COLORS.bg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  ttsBtnActive: {
+    backgroundColor: COLORS.accentBg,
+    borderColor: COLORS.accent,
+  },
+  ttsBtnText: {
+    fontSize: 12,
+    color: COLORS.textPrimary,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  ttsBtnTextActive: {
+    color: COLORS.accent,
+  },
+  ttsSliderGroup: {
+    flex: 1,
   },
   levelBtn: {
     flex: 1,

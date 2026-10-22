@@ -37,4 +37,8 @@ export const DEFAULT_SETTINGS = {
   font: 'default',
   kerning: 0,
   leading: 1.5,
+  speechRate: 1.0,
 };
+
+export const SPEECH_RATE_MIN = 0.5;
+export const SPEECH_RATE_MAX = 2.0;
