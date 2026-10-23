@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 // Adjust these paths if your files are in different folders
 import HomeScreen from './screens/HomeScreen'; 
 import ReaderScreen from './screens/ReaderScreen';
+import WebReaderScreen from './screens/WebReaderScreen';
 import { COLORS } from './utils/theme';
 
 const Stack = createNativeStackNavigator();
@@ -35,6 +36,7 @@ export default function App() {
         >
           <Stack.Screen name="Home" component={HomeScreen} />
           <Stack.Screen name="Reader" component={ReaderScreen} />
+          <Stack.Screen name="WebReader" component={WebReaderScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </>

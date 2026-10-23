@@ -6,17 +6,21 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system/legacy';
+import * as DocumentPicker from 'expo-document-picker';
+import { isSupported, recognizeText } from 'expo-mlkit-ocr';
 import { COLORS } from '../utils/theme';
-import { extractTextFromImage } from '../utils/gemini';
+import useConnectivity from '../utils/useConnectivity';
+import PdfText from '../modules/pdf-text';
 
 export default function HomeScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState('');
   const insets = useSafeAreaInsets();
+  const isOnline = useConnectivity();
 
   async function handleImage(result) {
     if (!result || result.canceled) return;
@@ -29,17 +33,17 @@ export default function HomeScreen({ navigation }) {
 
     try {
       setLoading(true);
-      const base64 = await FileSystem.readAsStringAsync(asset.uri, {
-         encoding: 'base64',
-      });
+      setLoadingMsg('Reading text on device...');
+      const { text } = await recognizeText(asset.uri);
 
-      setLoadingMsg('Extracting text...');
-      const mimeType = asset.mimeType || 'image/jpeg';
-      const text = await extractTextFromImage(base64, mimeType);
+      if (!text.trim()) {
+        Alert.alert('No Text Found', 'Could not find readable text in this image. Try a clearer, well-lit image.');
+        return;
+      }
 
       navigation.navigate('Reader', { extractedText: text });
     } catch (err) {
-      Alert.alert('OCR Failed', err.message || 'Could not extract text from image.');
+      Alert.alert('OCR Failed', err.message || 'Could not read text from this image.');
     } finally {
       setLoading(false);
       setLoadingMsg('');
@@ -47,6 +51,10 @@ export default function HomeScreen({ navigation }) {
   }
 
   async function openCamera() {
+    if (Platform.OS === 'web' || !isSupported()) {
+      Alert.alert('OCR Not Available', 'On-device text recognition is not supported on this device.');
+      return;
+    }
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission Required', 'Camera access is needed.');
@@ -60,6 +68,10 @@ export default function HomeScreen({ navigation }) {
   }
 
   async function openLibrary() {
+    if (Platform.OS === 'web' || !isSupported()) {
+      Alert.alert('OCR Not Available', 'On-device text recognition is not supported on this device.');
+      return;
+    }
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission Required', 'Photo library access is needed.');
@@ -72,16 +84,59 @@ export default function HomeScreen({ navigation }) {
     handleImage(result);
   }
 
+  async function openPdf() {
+    if (Platform.OS !== 'android' || !PdfText) {
+      Alert.alert('PDF reader unavailable', 'On-device PDF reading is currently available in the Android app.');
+      return;
+    }
+
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/pdf',
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (result.canceled) return;
+      const pdf = result.assets?.[0];
+      if (!pdf?.uri) {
+        Alert.alert('PDF unavailable', 'The selected PDF could not be opened.');
+        return;
+      }
+
+      setLoading(true);
+      setLoadingMsg('Reading PDF pages on device…');
+      const { text } = await PdfText.extractText(pdf.uri);
+      if (!text.trim()) {
+        Alert.alert('No text found', 'Could not recognize readable text in this PDF. Try a clearer or text-based document.');
+        return;
+      }
+      navigation.navigate('Reader', { extractedText: text, sourceTitle: pdf.name });
+    } catch (error) {
+      Alert.alert('PDF reading failed', error.message || 'Could not read this PDF on the device.');
+    } finally {
+      setLoading(false);
+      setLoadingMsg('');
+    }
+  }
+
   return (
     <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: COLORS.bg }}>
       <View style={styles.container}>
         
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.subtitle}>OCR MODE</Text>
+          <View style={styles.headerStatusRow}>
+            <Text style={styles.subtitle}>OCR MODE</Text>
+            <View style={styles.connectivity}>
+              <View style={[styles.connectivityDot, { backgroundColor: isOnline ? COLORS.accent : COLORS.textSecondary }]} />
+              <Text style={[styles.connectivityText, { color: isOnline ? COLORS.accent : COLORS.textSecondary }]}>
+                {isOnline ? 'ONLINE' : 'OFFLINE'}
+              </Text>
+            </View>
+          </View>
           <Text style={styles.title}>VISUAL AIDE</Text>
           <Text style={styles.description}>
-            Upload or capture an image to extract text into a highly readable, customizable format.
+            Scan images or PDFs offline, or open a website, then read the content with accessible fonts, speech, and reading controls.
           </Text>
         </View>
 
@@ -112,6 +167,30 @@ export default function HomeScreen({ navigation }) {
                 <Text style={styles.actionDesc}>Upload from gallery</Text>
               </View>
             </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={() => navigation.navigate('WebReader')}
+              activeOpacity={0.8}
+            >
+              <View style={styles.iconContainer}>
+                <Text style={styles.actionIcon}>Aa</Text>
+              </View>
+              <View style={styles.actionTextContainer}>
+                <Text style={styles.actionLabel}>Web Reader</Text>
+                <Text style={styles.actionDesc}>Read websites with accessibility tools</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionBtn} onPress={openPdf} activeOpacity={0.8}>
+              <View style={styles.iconContainer}>
+                <Text style={styles.actionIcon}>PDF</Text>
+              </View>
+              <View style={styles.actionTextContainer}>
+                <Text style={styles.actionLabel}>PDF Reader</Text>
+                <Text style={styles.actionDesc}>Extract and read document text offline</Text>
+              </View>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -129,11 +208,11 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 24,
     justifyContent: 'space-between',
-    paddingVertical: 24,
+    paddingVertical: 16,
   },
   header: {
-    marginTop: 32,
-    marginBottom: 40,
+    marginTop: 18,
+    marginBottom: 18,
   },
   subtitle: {
     fontSize: 12,
@@ -142,6 +221,31 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     textTransform: 'uppercase',
     fontWeight: '600',
+  },
+  headerStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  connectivity: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  connectivityDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  connectivityText: {
+    fontSize: 8,
+    fontWeight: '700',
+    letterSpacing: 1,
   },
   title: {
     fontSize: 32,
@@ -158,7 +262,7 @@ const styles = StyleSheet.create({
   actions: {
     flex: 1,
     justifyContent: 'center',
-    gap: 16,
+    gap: 10,
   },
   actionBtn: {
     flexDirection: 'row',
@@ -167,16 +271,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: 16,
-    padding: 20,
+    padding: 14,
   },
   iconContainer: {
-    width: 56,
-    height: 56,
+    width: 48,
+    height: 48,
     borderRadius: 12,
     backgroundColor: COLORS.bg,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: 12,
   },
   actionIcon: {
     fontSize: 24,

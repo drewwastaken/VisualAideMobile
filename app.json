@@ -2,11 +2,90 @@
   "expo": {
     "name": "VisualAideMobile3",
     "slug": "VisualAideMobile3",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "plugins": [
+      [
+        "expo-mlkit-ocr",
+        {
+          "iosEngine": "auto"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "16.0",
+            "useFrameworks": "static"
+          }
+        }
+      ],
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/OpenDyslexic-Regular.otf",
+            "./assets/fonts/OpenDyslexic-Bold.otf",
+            "./assets/fonts/Lexend.ttf",
+            "./assets/fonts/AtkinsonHyperlegible-Regular.ttf",
+            "./assets/fonts/AtkinsonHyperlegible-Bold.ttf"
+          ],
+          "android": {
+            "fonts": [
+              {
+                "fontFamily": "OpenDyslexic",
+                "fontDefinitions": [
+                  {
+                    "path": "./assets/fonts/OpenDyslexic-Regular.otf",
+                    "weight": 400
+                  },
+                  {
+                    "path": "./assets/fonts/OpenDyslexic-Bold.otf",
+                    "weight": 700
+                  }
+                ]
+              },
+              {
+                "fontFamily": "Lexend",
+                "fontDefinitions": [
+                  {
+                    "path": "./assets/fonts/Lexend.ttf",
+                    "weight": 400
+                  }
+                ]
+              },
+              {
+                "fontFamily": "Atkinson Hyperlegible",
+                "fontDefinitions": [
+                  {
+                    "path": "./assets/fonts/AtkinsonHyperlegible-Regular.ttf",
+                    "weight": 400
+                  },
+                  {
+                    "path": "./assets/fonts/AtkinsonHyperlegible-Bold.ttf",
+                    "weight": 700
+                  }
+                ]
+              }
+            ]
+          },
+          "ios": {
+            "fonts": [
+              "./assets/fonts/OpenDyslexic-Regular.otf",
+              "./assets/fonts/OpenDyslexic-Bold.otf",
+              "./assets/fonts/Lexend.ttf",
+              "./assets/fonts/AtkinsonHyperlegible-Regular.ttf",
+              "./assets/fonts/AtkinsonHyperlegible-Bold.ttf"
+            ]
+          }
+        }
+      ],
+      "expo-font",
+      "expo-asset"
+    ],
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -16,6 +95,8 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.drewwastaken.visualaide",
+      "versionCode": 5,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -24,6 +105,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "7d044b98-43d6-4ec6-b6d5-5f8c5f4dcfeb"
+      }
+    },
+    "owner": "drewwastaken0"
   }
 }
